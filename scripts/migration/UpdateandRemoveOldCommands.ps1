@@ -126,4 +126,4 @@ foreach ($sig in $configGroups.Keys) {
 
 $rangeOutput | Out-File -FilePath $rangeFile
 
-Write-Host "Done! Generated clean C9300 configs:`n - $descFile`n - $rangeFile" -ForegroundColor Green
+Write-Host "Done! Generated clean switch configs:`n - $descFile`n - $rangeFile" -ForegroundColor Green
