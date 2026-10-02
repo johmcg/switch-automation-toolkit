@@ -1,0 +1,34 @@
+staging_ip: "10.0.0.222"
+
+switches:
+  - hostname: Switch-A
+    current_ip: "10.0.0.1"
+    target_ip: "10.0.0.8"
+    subnet_mask: "255.255.255.0"
+    gateway: "10.0.0.254"
+    interface: "Vlan1"
+    device_type: "cisco_ios"
+
+  - hostname: Switch-B
+    current_ip: "10.0.0.8"
+    target_ip: "10.0.0.1"
+    subnet_mask: "255.255.255.0"
+    gateway: "10.0.0.254"
+    interface: "Vlan1"
+    device_type: "cisco_ios"
+
+  - hostname: Switch-C
+    current_ip: "10.0.0.3"
+    target_ip: "10.0.0.7"
+    subnet_mask: "255.255.255.0"
+    gateway: "10.0.0.254"
+    interface: "Vlan1"
+    device_type: "cisco_ios"
+
+  - hostname: Switch-D
+    current_ip: "10.0.0.7"
+    target_ip: "10.0.0.10"
+    subnet_mask: "255.255.255.0"
+    gateway: "10.0.0.254"
+    interface: "Vlan1"
+    device_type: "cisco_ios"

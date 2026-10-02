@@ -8,12 +8,16 @@ A complete infrastructure automation suite for Cisco Catalyst switch provisionin
 
 ## Overview
 
-This toolkit automates the full switch lifecycle:
+This toolkit automates the full switch lifecycle — from initial provisioning through operational maintenance:
 
+**Provisioning Pipeline:**
 1. **Config Backup** — Serial console and SSH-based configuration snapshots with timestamping
 2. **Firmware Updates** — Hands-off IOS/IOS-XE installation via USB with live monitoring
 3. **Config Modernization** — Legacy syntax translation and obsolete command purging
 4. **Deployment** — Interface range batching and organized config templates
+
+**Operational Tasks:**
+5. **IP Migration** — Coordinated IP address migrations with deadlock detection and safe rollback
 
 ### Real-World Performance
 
@@ -27,13 +31,14 @@ This toolkit automates the full switch lifecycle:
 ## Architecture
 
 ```
-Backup Layer (Serial/SSH)
-    ↓ (running-config.txt)
-Modernize Layer (Legacy→Modern syntax)
-    ↓ (clean_configs/ + interface ranges)
-Firmware Layer (IOS installation + verification)
-    ↓
-Ready for Deployment
+PROVISIONING PIPELINE
+├─ Backup Layer (Serial/SSH) → running-config.txt
+├─ Modernize Layer (Legacy→Modern syntax) → clean configs
+├─ Firmware Layer (IOS install + verify) → production-ready
+└─ Ready for Deployment
+
+OPERATIONAL TASKS
+└─ IP Migration (Deadlock detection + staging strategy) → coordinated redeployment
 ```
 
 ---
@@ -113,7 +118,7 @@ python SendCommandsOverSSH.py
 
 **Before Running:**
 ```python
-IMAGE_NAME = 'IOSIMAGE.bin'  # Filename on USB
+IMAGE_NAME = 'cat9k_iosxe.17.09.04a.SPA.bin'  # Filename on USB
 TEMP_PASS = 'YourTempPassword123!'             # Temporary enable secret
 COM_PORT = 'COM3'                               # Serial port
 ```
@@ -129,17 +134,17 @@ python UpdateSWSerial.py
 **Output Example:**
 ```
 [STEP 1] Detecting switch state and navigating to Switch#...
-[STEP 3] Running install: install add file usbflash0:IOSIMAGE.bin activate commit
+[STEP 3] Running install: install add file usbflash0:cat9k_iosxe.17.09.04a.SPA.bin activate commit
 [STEP 5] Monitoring reboot sequence... (Holding checks for 5 mins during POST)
 [STEP 7] Verifying running software version...
-Active Image: Cisco IOS XE Software, Catalyst L3 Switch Software Version 17.x.x
+Active Image: Cisco IOS XE Software, Catalyst L3 Switch Software Version 17.9.4a
 ```
 
 ---
 
 ### 4. UpdateandRemoveOldCommands.ps1
 
-**Translate legacy Catalyst configurations to updated Catalyst syntax. Remove deprecated commands.**
+**Translate legacy Catalyst 3850 configurations to Catalyst 9300 syntax. Remove deprecated commands.**
 
 **Deprecation Purging:**
 - `srr-queue` (old rate-limiting)
@@ -179,13 +184,77 @@ interface Gi1/0/2
 ```
 interface range Gi1/0/1 - 24
  switchport mode access
- switchport access vlan 12
+ switchport access vlan 10
  spanning-tree portfast
 
 interface range Gi1/0/25 - 48
  switchport mode access
- switchport access vlan 13
+ switchport access vlan 20
 ```
+
+---
+
+### 5. migrate_ips.py
+
+**Intelligent IP address migration for deployed switches with deadlock detection and safe rollback.**
+
+Orchestrates coordinated IP migrations across multiple switches. Automatically detects IP swap cycles and uses staging IP strategy to break deadlocks. Each migration step includes a 5-minute safety reload timer with automatic rollback if SSH reconnection fails.
+
+**Features:**
+- Deadlock detection: Identifies when switches need to swap IPs (circular dependencies)
+- Staging IP strategy: Uses temporary IP to break swap cycles without manual intervention
+- Safety rollback: 5-minute reload timer auto-triggers if target IP unreachable
+- Live polling: Waits for SSH response on new IP before finalizing config
+- Comprehensive logging: Tracks every step and migration success/failure
+- Safe-mode default: Generates plan and displays before any live execution
+
+**Before Running:**
+
+Create `inventory.yaml` with switch definitions:
+```yaml
+staging_ip: "10.0.0.222"
+
+switches:
+  - hostname: Switch-A
+    current_ip: "10.0.0.1"
+    target_ip: "10.0.0.8"
+    subnet_mask: "255.255.255.0"
+    gateway: "10.0.0.254"
+    interface: "Vlan1"
+    device_type: "cisco_ios"
+
+  - hostname: Switch-B
+    current_ip: "10.0.0.8"
+    target_ip: "10.0.0.1"
+    subnet_mask: "255.255.255.0"
+    gateway: "10.0.0.254"
+    interface: "Vlan1"
+    device_type: "cisco_ios"
+```
+
+**Usage:**
+```bash
+python migrate_ips.py -i inventory.yaml -l migration.log
+# Generates and displays migration plan
+# Plan shows staging steps needed to avoid IP conflicts
+# Live execution section is commented out; uncomment and run with credentials
+```
+
+**Output Example:**
+```
+======================================================================
+STEP   | HOSTNAME     | FROM IP         -> TO IP         | ACTION
+======================================================================
+1      | Switch-A     | 10.0.0.1        -> 10.0.0.222    | MOVE_TO_STAGING
+2      | Switch-B     | 10.0.0.8        -> 10.0.0.1      | MOVE_TO_TARGET
+3      | Switch-A     | 10.0.0.222      -> 10.0.0.8      | MOVE_TO_TARGET
+======================================================================
+
+SAFE MODE: Plan generated and logged. Network changes are disabled by default.
+```
+
+**Real-World Scenario:**
+Reorganizing switch IPs across campus network after facility consolidation. Two switches need to swap IPs (A: 10.0.0.1 → 10.0.0.8, B: 10.0.0.8 → 10.0.0.1). Script detects the circular dependency, moves Switch-A to staging IP first, then executes the swap safely without downtime.
 
 ---
 
@@ -262,7 +331,7 @@ COMMANDS = ["show running-config", "show version"]
 ### UpdateSWSerial.py
 Set USB image name and temporary password:
 ```python
-IMAGE_NAME = 'IOSIMAGE.bin'
+IMAGE_NAME = 'cat9k_iosxe.17.09.04a.SPA.bin'
 TEMP_PASS = 'YourTempPassword123!'
 COM_PORT = 'COM3'
 ```
@@ -280,7 +349,7 @@ $rangeFile  = "C:\configs\ranges.txt"
 ## Troubleshooting
 
 ### Serial Connection Issues
-- Ensure PuTTY/TeraTerm/Etc... are closed (exclusive device access required)
+- Ensure PuTTY/TeraTerm are closed (exclusive device access required)
 - Check Device Manager for correct COM port
 - Verify USB-to-serial driver is installed
 - Test with manual serial terminal (9600 baud) first
@@ -309,7 +378,7 @@ $rangeFile  = "C:\configs\ranges.txt"
 This toolkit demonstrates:
 - **Reliable automation** around inherently unreliable hardware (serial consoles, multi-stage boot sequences)
 - **Error resilience** with graceful failure handling and logging
-- **Real-world scale** — tested on factory-fresh and legacy hardware across multiple generations
+- **Real-world scale** tested on factory-fresh and legacy hardware across multiple generations
 - **Production-ready** code with edge case handling
 
 The infrastructure engineering value isn't in the individual scripts — it's in understanding provisioning workflows, identifying failure modes, and building systems that handle them reliably.
